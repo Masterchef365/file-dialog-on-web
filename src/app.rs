@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use egui::{Color32, RichText};
+use egui::{ahash::HashSet, Color32, RichText};
 use egui_file_dialog::{Disk, Disks, FileDialog, FileSystem, Metadata};
 use zip::ZipArchive;
 
@@ -49,7 +49,7 @@ impl eframe::App for TemplateApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Load file").clicked() {
                 let loaded_file = self.loaded_file.clone();
-                execute(async move {
+                execute_async(async move {
                     if let Some(file) = rfd::AsyncFileDialog::new().pick_file().await {
                         let bytes = file.read().await;
                         *loaded_file.lock().unwrap() = Some(bytes);
@@ -79,13 +79,21 @@ impl FileSystem for ZipWrapper {
         Ok(Metadata::default())
     }
 
-    fn read_dir(&self, path: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
+    fn read_dir(&self, base: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
         Ok(self
             .0
             .lock()
             .unwrap()
             .file_names()
             .map(|fname| PathBuf::from(fname))
+            .filter(|path| path.starts_with(base))
+            .filter_map(|path| {
+                path.strip_prefix(base)
+                    .ok()
+                    .and_then(|remainder| remainder.components().next().map(|part| base.join(part)))
+            })
+            .collect::<HashSet<PathBuf>>()
+            .into_iter()
             .collect())
     }
 
@@ -120,24 +128,17 @@ impl FileSystem for ZipWrapper {
     }
 
     fn current_dir(&self) -> std::io::Result<PathBuf> {
-        Ok(self
-            .0
-            .lock()
-            .unwrap()
-            .file_names()
-            .into_iter()
-            .map(|path| PathBuf::from(path))
-            .min_by(|a, b| a.iter().count().cmp(&b.iter().count()))
-            .unwrap_or_else(|| "".into()))
+        Ok("".into())
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn execute<F: Future<Output = ()> + Send + 'static>(f: F) {
+fn execute_async<F: Future<Output = ()> + Send + 'static>(f: F) {
     // this is stupid... use any executor of your choice instead
     std::thread::spawn(move || futures::executor::block_on(f));
 }
+
 #[cfg(target_arch = "wasm32")]
-fn execute<F: Future<Output = ()> + 'static>(f: F) {
+fn execute_async<F: Future<Output = ()> + 'static>(f: F) {
     wasm_bindgen_futures::spawn_local(f);
 }
