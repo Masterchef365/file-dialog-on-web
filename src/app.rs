@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     future::Future,
     io::Cursor,
+    os::unix::ffi::OsStrExt,
     path::PathBuf,
     rc::Rc,
     sync::{Arc, Mutex},
@@ -67,11 +68,7 @@ pub struct ZipWrapper(Mutex<ZipArchive<Cursor<Vec<u8>>>>);
 
 impl FileSystem for ZipWrapper {
     fn is_dir(&self, path: &std::path::Path) -> bool {
-        self.0
-            .lock()
-            .unwrap()
-            .file_names()
-            .any(|fname| PathBuf::from(fname).parent() == Some(path))
+        dbg!(dbg!(path).as_os_str().as_bytes().last().copied() == Some(b'/'))
     }
 
     fn is_file(&self, path: &std::path::Path) -> bool {
@@ -89,7 +86,6 @@ impl FileSystem for ZipWrapper {
             .unwrap()
             .file_names()
             .map(|fname| PathBuf::from(fname))
-            .filter(|path| dbg!(path.parent()) == Some(path))
             .collect())
     }
 
@@ -98,9 +94,7 @@ impl FileSystem for ZipWrapper {
     }
 
     fn get_disks(&self, canonicalize_paths: bool) -> egui_file_dialog::Disks {
-        Disks {
-            disks: vec![],
-        }
+        Disks { disks: vec![] }
     }
 
     fn create_dir(&self, path: &std::path::Path) -> std::io::Result<()> {
@@ -123,6 +117,18 @@ impl FileSystem for ZipWrapper {
             std::io::ErrorKind::Unsupported,
             "Unsupported",
         ))
+    }
+
+    fn current_dir(&self) -> std::io::Result<PathBuf> {
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .file_names()
+            .into_iter()
+            .map(|path| PathBuf::from(path))
+            .min_by(|a, b| a.iter().count().cmp(&b.iter().count()))
+            .unwrap_or_else(|| "".into()))
     }
 }
 
