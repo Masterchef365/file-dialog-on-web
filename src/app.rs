@@ -46,10 +46,12 @@ impl eframe::App for TemplateApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             if ui.button("Load file").clicked() {
                 let loaded_file = self.loaded_file.clone();
+                let ctx = ui.ctx().clone();
                 execute_async(async move {
-                    if let Some(file) = rfd::AsyncFileDialog::new().pick_file().await {
+                    if let Some(file) = rfd::AsyncFileDialog::new().add_filter("zip", &["zip"]).pick_file().await {
                         let bytes = file.read().await;
                         *loaded_file.lock().unwrap() = Some(bytes);
+                        ctx.request_repaint();
                     }
                 });
             }
