@@ -1,15 +1,12 @@
 use std::{
-    cell::RefCell,
     future::Future,
     io::Cursor,
-    os::unix::ffi::OsStrExt,
     path::PathBuf,
-    rc::Rc,
     sync::{Arc, Mutex},
 };
 
 use egui::{ahash::HashSet, Color32, RichText};
-use egui_file_dialog::{Disk, Disks, FileDialog, FileSystem, Metadata};
+use egui_file_dialog::{Disks, FileDialog, FileSystem, Metadata};
 use zip::ZipArchive;
 
 pub struct TemplateApp {
@@ -84,14 +81,7 @@ impl FileSystem for ZipWrapper {
     }
 
     fn metadata(&self, path: &std::path::Path) -> std::io::Result<Metadata> {
-        let mut meta = Metadata::default();
-        /*
-        if self.is_dir(path) {
-            meta.file_type =
-                Some("FileType { is_file: false, is_dir: true, is_symlink: false, .. }".into());
-        }
-        */
-        Ok(meta)
+        Ok(Metadata::default())
     }
 
     fn read_dir(&self, base: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
