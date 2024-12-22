@@ -1,66 +1,81 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    cell::RefCell,
+    future::Future,
+    io::Cursor,
+    path::PathBuf,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
+use egui::{Color32, RichText};
 use egui_file_dialog::{Disk, Disks, FileDialog, FileSystem, Metadata};
+use zip::ZipArchive;
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
 pub struct TemplateApp {
-    path: String,
-
-    #[serde(skip)]
-    dialog: FileDialog,
+    dialog: Option<FileDialog>,
+    loaded_file: Arc<Mutex<Option<Vec<u8>>>>,
+    error: Option<String>,
 }
 
 impl TemplateApp {
-    /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // This is also where you can customize the look and feel of egui using
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        let mut path = String::new();
-        if let Some(storage) = cc.storage {
-            path = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
-
         Self {
-            path,
-            dialog: FileDialog::from_filesystem(Arc::new(MyFileSystem)),
+            dialog: None, //,
+            loaded_file: Default::default(),
+            error: None,
         }
     }
 }
 
 impl eframe::App for TemplateApp {
-    /// Called by the frame work to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, &self.path);
-    }
-
-    /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if ui.button("Pick").clicked() {
-                self.dialog.pick_file()
+        if let Some(bytes) = self.loaded_file.lock().unwrap().take() {
+            match ZipArchive::new(Cursor::new(bytes)) {
+                Err(e) => self.error = Some(e.to_string()),
+                Ok(zip) => {
+                    let wrapper = Arc::new(ZipWrapper(Mutex::new(zip)));
+                    let mut dialog = FileDialog::from_filesystem(wrapper);
+                    dialog.pick_file();
+                    self.dialog = Some(dialog);
+                }
             }
-            ui.label(&self.path);
+        }
 
-            if let Some(path) = self.dialog.update(ctx).picked() {
-                self.path = path.to_string_lossy().to_string();
+        if let Some(dialog) = &mut self.dialog {
+            dialog.update(ctx);
+        }
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            if ui.button("Load file").clicked() {
+                let loaded_file = self.loaded_file.clone();
+                execute(async move {
+                    if let Some(file) = rfd::AsyncFileDialog::new().pick_file().await {
+                        let bytes = file.read().await;
+                        *loaded_file.lock().unwrap() = Some(bytes);
+                    }
+                });
+            }
+
+            if let Some(err) = &self.error {
+                ui.label(RichText::new(err).color(Color32::RED));
             }
         });
     }
 }
 
-pub struct MyFileSystem;
+pub struct ZipWrapper(Mutex<ZipArchive<Cursor<Vec<u8>>>>);
 
-impl FileSystem for MyFileSystem {
+impl FileSystem for ZipWrapper {
     fn is_dir(&self, path: &std::path::Path) -> bool {
-        !self.is_file(path)
+        self.0
+            .lock()
+            .unwrap()
+            .file_names()
+            .any(|fname| PathBuf::from(fname).parent() == Some(path))
     }
 
     fn is_file(&self, path: &std::path::Path) -> bool {
-        true
+        !self.is_dir(path)
     }
 
     fn metadata(&self, path: &std::path::Path) -> std::io::Result<Metadata> {
@@ -68,40 +83,31 @@ impl FileSystem for MyFileSystem {
     }
 
     fn read_dir(&self, path: &std::path::Path) -> std::io::Result<Vec<PathBuf>> {
-        Ok((0..30).map(|i| PathBuf::from(format!("{i}.txt"))).collect())
+        Ok(self
+            .0
+            .lock()
+            .unwrap()
+            .file_names()
+            .map(|fname| PathBuf::from(fname))
+            .filter(|path| dbg!(path.parent()) == Some(path))
+            .collect())
     }
 
     fn user_dirs(&self, canonicalize_paths: bool) -> Option<egui_file_dialog::UserDirectories> {
-        Some(egui_file_dialog::UserDirectories {
-            home_dir: Some("Certified".into()),
-            audio_dir: Some("Hood".into()),
-            desktop_dir: Some("Classic".into()),
-            document_dir: None,
-            download_dir: None,
-            picture_dir: None,
-            video_dir: None,
-        })
+        None
     }
 
     fn get_disks(&self, canonicalize_paths: bool) -> egui_file_dialog::Disks {
         Disks {
-            disks: vec![
-                Disk {
-                    is_removable: false,
-                    mount_point: "/dev/nvmeeeee".into(),
-                    display_name: "/dev/nvmeeeee".into(),
-                },
-                Disk {
-                    is_removable: false,
-                    display_name: "C:\\wunkus".into(),
-                    mount_point: "C:\\wunkus".into(),
-                },
-            ],
+            disks: vec![],
         }
     }
 
     fn create_dir(&self, path: &std::path::Path) -> std::io::Result<()> {
-        Ok(())
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Unsupported",
+        ))
     }
 
     fn is_path_hidden(&self, path: &std::path::Path) -> bool {
@@ -113,6 +119,19 @@ impl FileSystem for MyFileSystem {
         path: &std::path::Path,
         max_chars: usize,
     ) -> std::io::Result<String> {
-        Ok("Hello world!".to_string())
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Unsupported",
+        ))
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn execute<F: Future<Output = ()> + Send + 'static>(f: F) {
+    // this is stupid... use any executor of your choice instead
+    std::thread::spawn(move || futures::executor::block_on(f));
+}
+#[cfg(target_arch = "wasm32")]
+fn execute<F: Future<Output = ()> + 'static>(f: F) {
+    wasm_bindgen_futures::spawn_local(f);
 }
