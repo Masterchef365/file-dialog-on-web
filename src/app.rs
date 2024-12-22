@@ -68,7 +68,9 @@ pub struct ZipWrapper(Mutex<ZipArchive<Cursor<Vec<u8>>>>);
 
 impl FileSystem for ZipWrapper {
     fn is_dir(&self, path: &std::path::Path) -> bool {
-        dbg!(dbg!(path).as_os_str().as_bytes().last().copied() == Some(b'/'))
+        self.0.lock().unwrap().by_name(path.to_str().unwrap()).is_err()
+
+        //dbg!(dbg!(path).as_os_str().as_bytes().last().copied() == Some(b'/'))
     }
 
     fn is_file(&self, path: &std::path::Path) -> bool {
