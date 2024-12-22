@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use egui::{ahash::HashSet, Color32, RichText};
+use egui::{ahash::HashSet, github_link_file_line, Color32, RichText};
 use egui_file_dialog::{Disks, FileDialog, FileSystem, Metadata};
 use zip::ZipArchive;
 
@@ -44,7 +44,7 @@ impl eframe::App for TemplateApp {
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            if ui.button("Load file").clicked() {
+            if ui.button("Load zip file").clicked() {
                 let loaded_file = self.loaded_file.clone();
                 let ctx = ui.ctx().clone();
                 execute_async(async move {
@@ -59,6 +59,8 @@ impl eframe::App for TemplateApp {
             if let Some(err) = &self.error {
                 ui.label(RichText::new(err).color(Color32::RED));
             }
+
+            ui.hyperlink("https://github.com/Masterchef365/file-dialog-on-web");
         });
     }
 }
