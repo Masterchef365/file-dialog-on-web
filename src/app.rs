@@ -48,7 +48,11 @@ impl eframe::App for TemplateApp {
                 let loaded_file = self.loaded_file.clone();
                 let ctx = ui.ctx().clone();
                 execute_async(async move {
-                    if let Some(file) = rfd::AsyncFileDialog::new().add_filter("zip", &["zip"]).pick_file().await {
+                    if let Some(file) = rfd::AsyncFileDialog::new()
+                        .add_filter("zip", &["zip"])
+                        .pick_file()
+                        .await
+                    {
                         let bytes = file.read().await;
                         *loaded_file.lock().unwrap() = Some(bytes);
                         ctx.request_repaint();
@@ -111,7 +115,7 @@ impl FileSystem for ZipWrapper {
     }
 
     fn get_disks(&self, canonicalize_paths: bool) -> egui_file_dialog::Disks {
-        Disks { disks: vec![] }
+        Disks::new(vec![])
     }
 
     fn create_dir(&self, path: &std::path::Path) -> std::io::Result<()> {
