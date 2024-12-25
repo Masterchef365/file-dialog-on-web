@@ -1015,6 +1015,7 @@ dependencies = [
 [[package]]
 name = "egui-file-dialog"
 version = "0.8.0"
+source = "git+https://github.com/Masterchef365/egui-file-dialog.git?branch=virtual-fs#d379a652ee036df0aa6cbc0f776d4d13c30ee1c4"
 dependencies = [
  "directories",
  "dunce",
