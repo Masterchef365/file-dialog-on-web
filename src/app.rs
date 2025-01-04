@@ -6,7 +6,7 @@ use std::{
 };
 
 use egui::{ahash::HashSet, github_link_file_line, Color32, RichText};
-use egui_file_dialog::{Disks, FileDialog, FileSystem, Metadata};
+use egui_file_dialog::{Disks, FileDialog, FileDialogConfig, FileSystem, Metadata};
 use zip::ZipArchive;
 
 pub struct TemplateApp {
@@ -32,7 +32,8 @@ impl eframe::App for TemplateApp {
                 Err(e) => self.error = Some(e.to_string()),
                 Ok(zip) => {
                     let wrapper = Arc::new(ZipWrapper(Mutex::new(zip)));
-                    let mut dialog = FileDialog::from_filesystem(wrapper);
+                    let mut dialog =
+                        FileDialog::with_config(FileDialogConfig::default_from_filesystem(wrapper));
                     dialog.pick_file();
                     self.dialog = Some(dialog);
                 }
